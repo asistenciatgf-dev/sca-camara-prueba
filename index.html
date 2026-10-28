@@ -8,95 +8,127 @@
   body{font-family:Arial,sans-serif;max-width:760px;margin:28px auto;padding:0 16px;color:#222}
   button{padding:12px 18px;margin:6px 6px 6px 0;border:0;border-radius:8px;cursor:pointer;font-size:16px}
   button:disabled{opacity:.5;cursor:not-allowed}
-  #start{background:#1769aa;color:white} #take{background:#16803c;color:white} #send{background:#0b6658;color:white} #cancel{background:#ddd}
+  #capture{background:#16803c;color:white}
+  #cancel{background:#ddd}
   video,img{display:block;width:100%;max-width:640px;background:#111;border-radius:8px;margin:16px 0}
   #msg{padding:12px;background:#f2f4f7;border-radius:8px;white-space:pre-wrap}
 </style>
 </head>
 <body>
 <h1>SCA - Cámara de asistencia (PC)</h1>
-<p>Activa la cámara, toma la selfie y pulsa <b>Usar foto en SCA</b>. La imagen se devuelve únicamente a la ventana SCA que abrió esta página.</p>
-<button id="start">Activar cámara</button>
-<button id="take" disabled>Tomar foto</button>
-<button id="send" disabled>Usar foto en SCA</button>
+<p>La cámara se activa automáticamente. Encuadra tu rostro y pulsa <b>Tomar y usar foto</b> para devolver la selfie a SCA.</p>
+
+<button id="capture" disabled>Tomar y usar foto</button>
 <button id="cancel">Cancelar</button>
-<div id="msg">Pulsa “Activar cámara” y permite el acceso cuando el navegador lo solicite.</div>
+
+<div id="msg">Solicitando acceso a la cámara…</div>
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas" hidden></canvas>
-<img id="photo" alt="Vista previa de la selfie" hidden>
+
 <script>
 'use strict';
+
 let stream = null;
 let dataUrl = '';
+let enviando = false;
+
 const video = document.getElementById('video');
 const msg = document.getElementById('msg');
-const start = document.getElementById('start');
-const take = document.getElementById('take');
-const send = document.getElementById('send');
+const capture = document.getElementById('capture');
 const cancel = document.getElementById('cancel');
 const canvas = document.getElementById('canvas');
-const photo = document.getElementById('photo');
 
 function stopCamera() {
   if (stream) stream.getTracks().forEach(track => track.stop());
   stream = null;
   video.srcObject = null;
-  take.disabled = true;
 }
-start.addEventListener('click', async () => {
+
+async function startCamera() {
   msg.textContent = 'Solicitando acceso a la cámara…';
+  capture.disabled = true;
+
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('La cámara no está disponible en este navegador/contexto HTTPS.');
     }
-    stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' },
+      audio: false
+    });
+
     video.srcObject = stream;
     await video.play();
-    take.disabled = false;
-    msg.textContent = 'Cámara activada. Toma la selfie cuando estés listo.';
+
+    capture.disabled = false;
+    msg.textContent = 'Cámara lista. Encuadra tu rostro y pulsa “Tomar y usar foto”.';
   } catch (e) {
-    msg.textContent = 'No se pudo activar la cámara: ' + e.name + '\n' + e.message;
+    msg.textContent = 'No se pudo activar la cámara: ' +
+      (e.name || 'Error') + '\n' + (e.message || e) +
+      '\n\nPermite el acceso a la cámara en el navegador y vuelve a abrirla desde SCA.';
   }
-});
-take.addEventListener('click', () => {
+}
+
+capture.addEventListener('click', () => {
+  if (enviando) return;
+
   if (!stream || !video.videoWidth || !video.videoHeight) {
-    msg.textContent = 'La cámara todavía no está lista. Espera y vuelve a intentarlo.';
+    msg.textContent = 'La cámara todavía no está lista. Espera unos segundos e inténtalo de nuevo.';
     return;
   }
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-  photo.src = dataUrl;
-  photo.hidden = false;
-  send.disabled = false;
-  msg.textContent = 'Selfie capturada. Revisa la imagen y pulsa “Usar foto en SCA” para devolverla.';
-});
-send.addEventListener('click', () => {
-  if (!dataUrl) {
-    msg.textContent = 'Primero toma la foto.';
-    return;
-  }
+
   if (!window.opener || window.opener.closed) {
     msg.textContent = 'No se encontró la ventana SCA. Cierra esta página y abre la cámara desde el botón de SCA.';
     return;
   }
-  window.opener.postMessage({type:'SCA_SELFIE_CAPTURED', dataUrl:dataUrl}, '*');
-  msg.textContent = 'Foto enviada a la ventana SCA. Puedes volver a SCA.';
-  stopCamera();
-  send.disabled = true;
-  start.disabled = true;
+
+  try {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+
+    if (!context) throw new Error('No se pudo preparar la imagen.');
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    enviando = true;
+    capture.disabled = true;
+    cancel.disabled = true;
+    msg.textContent = 'Enviando la selfie a SCA…';
+
+    window.opener.postMessage({
+      type: 'SCA_SELFIE_CAPTURED',
+      dataUrl: dataUrl
+    }, '*');
+
+    stopCamera();
+    msg.textContent = 'Selfie enviada a SCA. Puedes volver a la ventana de asistencia.';
+    window.setTimeout(() => window.close(), 500);
+  } catch (e) {
+    enviando = false;
+    capture.disabled = false;
+    cancel.disabled = false;
+    msg.textContent = 'No se pudo enviar la foto: ' + (e.message || e);
+  }
 });
+
 cancel.addEventListener('click', () => {
   try {
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({type:'SCA_CAMERA_CANCELLED'}, '*');
+      window.opener.postMessage({type: 'SCA_CAMERA_CANCELLED'}, '*');
     }
   } catch (e) {}
+
   stopCamera();
   window.close();
 });
+
 window.addEventListener('beforeunload', stopCamera);
+
+// Al abrir la ventana, solicita automáticamente el permiso y activa la cámara.
+startCamera();
 </script>
 </body>
 </html>
