@@ -3,73 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SCA - Prueba de cámara PC</title>
+<title>SCA - Cámara PC</title>
 <style>
-  body{font-family:Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 16px;color:#222}
-  button{padding:12px 18px;margin:6px;border:0;border-radius:8px;cursor:pointer;font-size:16px}
-  #start{background:#1769aa;color:white} #take{background:#16803c;color:white} #stop{background:#ddd}
+  body{font-family:Arial,sans-serif;max-width:760px;margin:28px auto;padding:0 16px;color:#222}
+  button{padding:12px 18px;margin:6px 6px 6px 0;border:0;border-radius:8px;cursor:pointer;font-size:16px}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  #start{background:#1769aa;color:white} #take{background:#16803c;color:white} #send{background:#0b6658;color:white} #cancel{background:#ddd}
   video,img{display:block;width:100%;max-width:640px;background:#111;border-radius:8px;margin:16px 0}
   #msg{padding:12px;background:#f2f4f7;border-radius:8px;white-space:pre-wrap}
 </style>
 </head>
 <body>
-<h1>Prueba de cámara SCA (PC)</h1>
-<p>Esta página solo comprueba si el navegador puede abrir la cámara. No toma ni envía fotos automáticamente y no se conecta a SCA.</p>
+<h1>SCA - Cámara de asistencia (PC)</h1>
+<p>Activa la cámara, toma la selfie y pulsa <b>Usar foto en SCA</b>. La imagen se devuelve únicamente a la ventana SCA que abrió esta página.</p>
 <button id="start">Activar cámara</button>
-<button id="take" disabled>Tomar foto de prueba</button>
-<button id="stop" disabled>Apagar cámara</button>
+<button id="take" disabled>Tomar foto</button>
+<button id="send" disabled>Usar foto en SCA</button>
+<button id="cancel">Cancelar</button>
 <div id="msg">Pulsa “Activar cámara” y permite el acceso cuando el navegador lo solicite.</div>
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas" hidden></canvas>
-<img id="photo" alt="La foto de prueba aparecerá aquí" hidden>
+<img id="photo" alt="Vista previa de la selfie" hidden>
 <script>
+'use strict';
 let stream = null;
+let dataUrl = '';
 const video = document.getElementById('video');
 const msg = document.getElementById('msg');
 const start = document.getElementById('start');
 const take = document.getElementById('take');
-const stop = document.getElementById('stop');
+const send = document.getElementById('send');
+const cancel = document.getElementById('cancel');
 const canvas = document.getElementById('canvas');
 const photo = document.getElementById('photo');
 
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  stream = null;
+  video.srcObject = null;
+  take.disabled = true;
+}
 start.addEventListener('click', async () => {
   msg.textContent = 'Solicitando acceso a la cámara…';
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('getUserMedia no está disponible. Abre el sitio con HTTPS en un navegador actualizado.');
+      throw new Error('La cámara no está disponible en este navegador/contexto HTTPS.');
     }
     stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
     video.srcObject = stream;
     await video.play();
-    video.hidden = false;
     take.disabled = false;
-    stop.disabled = false;
-    msg.textContent = 'CÁMARA ACTIVADA. Esta prueba no envía la imagen a ningún servidor.';
+    msg.textContent = 'Cámara activada. Toma la selfie cuando estés listo.';
   } catch (e) {
-    msg.textContent = 'FALLO: ' + e.name + '\n' + e.message +
-      '\n\nRevisa si otra aplicación está usando la cámara y los permisos del navegador.';
+    msg.textContent = 'No se pudo activar la cámara: ' + e.name + '\n' + e.message;
   }
 });
 take.addEventListener('click', () => {
-  if (!stream || !video.videoWidth) {
-    msg.textContent = 'La cámara todavía no está lista. Espera un momento y vuelve a intentar.';
+  if (!stream || !video.videoWidth || !video.videoHeight) {
+    msg.textContent = 'La cámara todavía no está lista. Espera y vuelve a intentarlo.';
     return;
   }
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video,0,0);
-  photo.src = canvas.toDataURL('image/jpeg',0.85);
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  photo.src = dataUrl;
   photo.hidden = false;
-  msg.textContent = 'Foto de prueba capturada localmente. No se ha enviado ni guardado en SCA.';
-});
-stop.addEventListener('click', () => {
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  stream = null;
-  video.srcObject = null;
-  take.disabled = true;
-  stop.disabled = true;
-  msg.textContent = 'Cámara apagada.';
-});
-</script>
-</body>
-</html>
+  send.disabled = false;
+  msg.textContent = 'Selfie capturada. Revisa la imagen y pulsa “Usar foto en SCA” p
