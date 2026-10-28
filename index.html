@@ -70,4 +70,33 @@ take.addEventListener('click', () => {
   photo.src = dataUrl;
   photo.hidden = false;
   send.disabled = false;
-  msg.textContent = 'Selfie capturada. Revisa la imagen y pulsa “Usar foto en SCA” p
+  msg.textContent = 'Selfie capturada. Revisa la imagen y pulsa “Usar foto en SCA” para devolverla.';
+});
+send.addEventListener('click', () => {
+  if (!dataUrl) {
+    msg.textContent = 'Primero toma la foto.';
+    return;
+  }
+  if (!window.opener || window.opener.closed) {
+    msg.textContent = 'No se encontró la ventana SCA. Cierra esta página y abre la cámara desde el botón de SCA.';
+    return;
+  }
+  window.opener.postMessage({type:'SCA_SELFIE_CAPTURED', dataUrl:dataUrl}, '*');
+  msg.textContent = 'Foto enviada a la ventana SCA. Puedes volver a SCA.';
+  stopCamera();
+  send.disabled = true;
+  start.disabled = true;
+});
+cancel.addEventListener('click', () => {
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({type:'SCA_CAMERA_CANCELLED'}, '*');
+    }
+  } catch (e) {}
+  stopCamera();
+  window.close();
+});
+window.addEventListener('beforeunload', stopCamera);
+</script>
+</body>
+</html>
